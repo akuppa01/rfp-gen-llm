@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFP Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>RFP Generator</h1>
+        <div class="search-bar">
+            <input type="text" id="query" placeholder="Enter RFP type..." />
+            <button onclick="generateRFP()">Generate</button>
+        </div>
+        <div id="rfp-output" class="rfp-output">
+            <p>Generated RFP will appear here...</p>
+        </div>
+    </div>
+
+    <script>
+        function generateRFP() {
+            const query = document.getElementById('query').value;
+            fetch('/generate_rfp', {
+                method: 'POST',
+                body: new URLSearchParams({ query: query }),
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('rfp-output').innerText = data.rfp;
+            });
+        }
+    </script>
+</body>
+</html>
