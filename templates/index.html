@@ -4,33 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RFP Generator</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
     <div class="container">
         <h1>RFP Generator</h1>
-        <div class="search-bar">
-            <input type="text" id="query" placeholder="Enter RFP type..." />
-            <button onclick="generateRFP()">Generate</button>
-        </div>
-        <div id="rfp-output" class="rfp-output">
-            <p>Generated RFP will appear here...</p>
+        <form id="rfp-form">
+            <label for="query">Enter your query:</label>
+            <textarea id="query" name="query" required></textarea>
+            <button type="submit">Generate RFP</button>
+        </form>
+        
+        <div id="result">
+            <h2>Generated RFP:</h2>
+            <pre id="generated-rfp"></pre>
+            <a id="download-link" href="#" style="display:none;">Download RFP</a>
         </div>
     </div>
 
     <script>
-        function generateRFP() {
+        document.getElementById('rfp-form').addEventListener('submit', async (e) => { 
+            e.preventDefault();
+
             const query = document.getElementById('query').value;
-            fetch('/generate_rfp', {
+
+            // Send the request as JSON
+            const response = await fetch('/generate_rfp', {
                 method: 'POST',
-                body: new URLSearchParams({ query: query }),
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('rfp-output').innerText = data.rfp;
+                headers: {
+                    'Content-Type': 'application/json', // Ensure you're sending the request as JSON
+                },
+                body: JSON.stringify({ query }) // Send query as part of the JSON body
             });
-        }
+
+            const data = await response.json();
+
+            if (response.ok) {
+                document.getElementById('generated-rfp').textContent = data.generated_rfp;
+                document.getElementById('download-link').style.display = 'inline';
+                document.getElementById('download-link').href = '/download_rfp';
+            } else {
+                alert('Error generating RFP: ' + data.error);
+            }
+        });
+
     </script>
 </body>
 </html>
