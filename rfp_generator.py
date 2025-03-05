@@ -82,6 +82,10 @@ def retrieve_relevant_chunks(query, top_k=5):
     relevant_chunks = [match.metadata["text"] for match in results.matches]
     return relevant_chunks
 
+
+# Initialize the OpenAI client
+client = OpenAI(api_key="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")
+
 def generate_rfp(query):
     # Retrieve relevant chunks (same as before)
     relevant_chunks = retrieve_relevant_chunks(query, top_k=5)
@@ -106,36 +110,15 @@ def generate_rfp(query):
     Ensure the RFP is 3-4 pages long and follows a professional tone.
     """
 
-    print("check")
-    # Send the request to Hugging Face Inference API
-    API_URL = "https://api-inference.huggingface.co/models/gpt2"
-    headers = {"Authorization": f"Bearer {os.getenv('HUGGING_FACE_API_KEY')}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_length": 2000,  # Adjust based on your needs
-            "temperature": 0.7,   # Controls creativity (0.7 is a good balance)
-            "top_p": 0.9,         # Nucleus sampling (optional)
-            "do_sample": True,    # Enable sampling for more diverse outputs
-        },
-    }
+    # Generate RFP using OpenAI GPT-3.5
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that generates professional RFPs."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=2000,
+        temperature=0.7
+    )
 
-    # Debug: Print the request details
-    print("Headers:", headers)
-    print("Payload:", payload)
-
-    # Make the API request
-    response = requests.post(API_URL, headers=headers, json=payload)
-
-    # Debug: Print the response details
-    print("Response Status Code:", response.status_code)
-    print("Response Text:", response.text)
-
-    # Check for errors
-    if response.status_code != 200:
-        raise Exception(f"API request failed with status code {response.status_code}: {response.text}")
-
-    # Extract the generated text
-    response_text = response.json()[0]["generated_text"]
-
-    return response_text
+    return response.choices[0].message.content

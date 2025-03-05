@@ -15,6 +15,9 @@ if not os.path.exists(OUTPUT_DIR):
 # store_embeddings_in_pinecone()
 # print("Embeddings stored successfully!")
 
+
+
+
 @app.route('/')
 def home():
     return render_template('index.html')

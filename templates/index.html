@@ -23,7 +23,7 @@
     </div>
 
     <script>
-        document.getElementById('rfp-form').addEventListener('submit', async (e) => { 
+        document.getElementById('rfp-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const query = document.getElementById('query').value;
@@ -32,22 +32,25 @@
             const response = await fetch('/generate_rfp', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json', // Ensure you're sending the request as JSON
+                    'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ query }) // Send query as part of the JSON body
+                body: JSON.stringify({ query: query }),
             });
 
             const data = await response.json();
 
-            if (response.ok) {
-                document.getElementById('generated-rfp').textContent = data.generated_rfp;
-                document.getElementById('download-link').style.display = 'inline';
-                document.getElementById('download-link').href = '/download_rfp';
+            if (data.error) {
+                alert(data.error);
             } else {
-                alert('Error generating RFP: ' + data.error);
+                // Display the generated RFP
+                document.getElementById('generated-rfp').textContent = data.rfp;
+
+                // Show the download link
+                const downloadLink = document.getElementById('download-link');
+                downloadLink.href = "generated_rfp.txt";
+                downloadLink.style.display = 'block';
             }
         });
-
     </script>
 </body>
 </html>
