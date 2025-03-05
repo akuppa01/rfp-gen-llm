@@ -11,9 +11,9 @@ if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
 # Ensure embeddings are stored on startup
-print("Storing embeddings in Pinecone...")
+# print("Storing embeddings in Pinecone...")
 # store_embeddings_in_pinecone()
-print("Embeddings stored successfully!")
+# print("Embeddings stored successfully!")
 
 @app.route('/')
 def home():
@@ -29,35 +29,28 @@ def generate_rfp_endpoint():
         if not user_query:
             return jsonify({"error": "Query parameter is required"}), 400
 
-        # Generate the RFP based on the query
-        generated_rfp, file_path = generate_rfp(user_query)
+        # Generate the RFP
+        generated_rfp = generate_rfp(user_query)
 
-        # Save the generated RFP to a text file
-        filename = f"{OUTPUT_DIR}/rfp_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.txt"
-        with open(filename, 'w') as f:
+        # Save the generated RFP to a file
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(OUTPUT_DIR, f"rfp_{timestamp}.txt")
+        with open(output_file, 'w') as f:
             f.write(generated_rfp)
 
+        # Return the generated RFP and a download link
         return jsonify({
-            "message": "RFP generated successfully!",
-            "generated_rfp": generated_rfp,
-            "file_path": file_path
+            "rfp": generated_rfp,
+            "download_link": f"/download_rfp/{timestamp}"
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/download_rfp', methods=['GET'])
-def download_rfp():
-    try:
-        file_path = "./outputs/generated_rfp.txt"
-        
-        if not os.path.exists(file_path):
-            return jsonify({"error": "No RFP file found"}), 404
-        
-        return send_file(file_path, as_attachment=True)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@app.route('/download_rfp/<timestamp>')
+def download_rfp(timestamp):
+    output_file = os.path.join(OUTPUT_DIR, f"rfp_{timestamp}.txt")
+    return send_file(output_file, as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True)

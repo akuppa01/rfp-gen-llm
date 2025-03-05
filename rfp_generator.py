@@ -3,23 +3,37 @@ import os
 import fitz  # PyMuPDF
 import pinecone
 import numpy as np
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
 from sentence_transformers import SentenceTransformer
+import requests
 
+
+# Load environment variables from .env file
 load_dotenv()
 
-# Initialize APIs
-openai.api_key = os.getenv("OPENAI_API_KEY")
-pinecone_api_key = os.getenv("PINECONE_API_KEY")
+# Debug: Print environment variables
+# print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY"))
+# print("PINECONE_API_KEY:", os.getenv("PINECONE_API_KEY"))
+
+# Check if OPENAI_API_KEY is set
+# openai_api_key = os.getenv("OPENAI_API_KEY")
+# if not openai_api_key:
+#     raise ValueError("OPENAI_API_KEY environment variable is not set. Please check your .env file.")
+
+# # Initialize the OpenAI client
+# client = OpenAI(api_key=openai_api_key)
 
 # Initialize Pinecone
+pinecone_api_key = os.getenv("PINECONE_API_KEY")
+if not pinecone_api_key:
+    raise ValueError("PINECONE_API_KEY environment variable is not set. Please check your .env file.")
+
 pc = Pinecone(api_key=pinecone_api_key)
-# pc.delete_index("my-index")
 
 # Define the index name
-index_name = "my-index"
+index_name = "rfp-index"
 
 # Create index if it doesn't exist
 if index_name not in pc.list_indexes().names():
@@ -39,90 +53,89 @@ index = pc.Index(index_name)
 # Initialize embedding model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Load LLM for RFP generation
-llm = pipeline("text-generation", model="gpt2", max_length=1024)
-
-
 # Function to extract text from PDFs
 def extract_text_from_pdfs(data_folder="data"):
     pdf_texts = []
     for filename in os.listdir(data_folder):
         if filename.endswith(".pdf"):
             pdf_path = os.path.join(data_folder, filename)
-            doc = fitz.open(pdf_path)
-            text = ""
-            for page_num in range(doc.page_count):
-                text += doc.load_page(page_num).get_text()
-            pdf_texts.append((filename, text))
+            with fitz.open(pdf_path) as doc:
+                text = ""
+                for page in doc:
+                    text += page.get_text()
+                chunks = [chunk.strip() for chunk in text.split(". ") if chunk.strip()]
+                pdf_texts.extend(chunks)
     return pdf_texts
 
+# Function to store embeddings in Pinecone
+def store_embeddings_in_pinecone(data_folder="data"):
+    pdf_texts = extract_text_from_pdfs(data_folder)
+    for i, text in enumerate(pdf_texts):
+        truncated_text = text[:500]
+        embedding = embedding_model.encode(truncated_text)
+        index.upsert([(f"doc{i}_chunk{i}", embedding.tolist(), {"text": truncated_text})])
 
-# ✅ Function to split text into smaller chunks
-def split_text_into_chunks(text, chunk_size=200):
-    words = text.split()
-    return [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+# Function to retrieve relevant chunks from Pinecone
+def retrieve_relevant_chunks(query, top_k=5):
+    query_embedding = embedding_model.encode(query).tolist()
+    results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
+    relevant_chunks = [match.metadata["text"] for match in results.matches]
+    return relevant_chunks
 
-
-# Function to generate embeddings and store in Pinecone
-def store_embeddings_in_pinecone():
-    pdf_texts = extract_text_from_pdfs()
-    for doc_name, text in pdf_texts:
-        chunks = split_text_into_chunks(text)  # Split text into chunks before embedding
-        for i, chunk in enumerate(chunks):
-            if len(chunk.strip()) > 10:  # Avoid tiny chunks
-                vector = embedding_model.encode(chunk).tolist()
-                # Store minimal metadata (doc_id and chunk index)
-                metadata = {"doc_id": doc_name, "chunk_index": i}
-                index.upsert(vectors=[(f"{doc_name}-{i}", vector, metadata)])
-
-
-# Function to retrieve relevant text from Pinecone
-def retrieve_relevant_data(query, top_k=5):
-    query_vector = embedding_model.encode(query).tolist()
-    results = index.query(vector=query_vector, top_k=top_k, include_metadata=True)
-    
-    # Debugging: print the results to check the structure
-    print("Pinecone query results:", results)
-    
-    retrieved_texts = []
-    
-    # Ensure we're checking if 'text' is in metadata
-    for match in results["matches"]:
-        if "text" in match["metadata"]:
-            retrieved_texts.append(match["metadata"]["text"])
-        else:
-            # Handle the case where 'text' is missing in the metadata
-            retrieved_texts.append("No relevant text found in this document.")
-    
-    return "\n\n".join(retrieved_texts)
-
-# Generate RFP from query
-def generate_rfp_from_query(query):
-    retrieved_text = retrieve_relevant_data(query, top_k=10)  # Retrieve more relevant text
-    input_text = f"Create a comprehensive RFP for a cloud computing solution provider for an enterprise with 500 employees. The solution should include secure data storage, disaster recovery, and scalability. The vendor should provide detailed pricing, implementation timeline, and support options. Please include the following sections: Executive Summary, Technical Requirements, Pricing and Cost Structure, Implementation Timeline, and Support Options."
-    response = llm(input_text, max_new_tokens=2048)  # Generate longer text
-    generated_rfp = response[0]['generated_text']
-    file_path = save_rfp_to_file(generated_rfp)
-    return generated_rfp, file_path
-
-
-# Save the generated RFP to a file
-def save_rfp_to_file(rfp, output_dir="./outputs"):
-    os.makedirs(output_dir, exist_ok=True)
-    file_path = f"{output_dir}/generated_rfp.txt"
-    
-    if isinstance(rfp, list) or isinstance(rfp, tuple):
-        rfp = "\n".join(str(item) for item in rfp)
-    
-    with open(file_path, "w") as f:
-        f.write(rfp)
-    
-    return file_path
-
-
-# Main function
 def generate_rfp(query):
-    generated_rfp, file_path = generate_rfp_from_query(query)
-    print(f"Generated RFP:\n{generated_rfp}")
-    print(f"RFP saved to: {file_path}")
-    return generated_rfp, file_path
+    # Retrieve relevant chunks (same as before)
+    relevant_chunks = retrieve_relevant_chunks(query, top_k=5)
+    context = "\n\n".join(relevant_chunks)
+
+    # Define the prompt
+    prompt = f"""
+    You are an expert in writing Request for Proposals (RFPs). Based on the following context, generate a detailed RFP document with the following sections:
+    1. Introduction
+    2. Scope of Work
+    3. Requirements
+    4. Evaluation Criteria
+    5. Submission Guidelines
+    6. Timeline
+
+    Context:
+    {context}
+
+    Query:
+    {query}
+
+    Ensure the RFP is 3-4 pages long and follows a professional tone.
+    """
+
+    print("check")
+    # Send the request to Hugging Face Inference API
+    API_URL = "https://api-inference.huggingface.co/models/gpt2"
+    headers = {"Authorization": f"Bearer {os.getenv('HUGGING_FACE_API_KEY')}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_length": 2000,  # Adjust based on your needs
+            "temperature": 0.7,   # Controls creativity (0.7 is a good balance)
+            "top_p": 0.9,         # Nucleus sampling (optional)
+            "do_sample": True,    # Enable sampling for more diverse outputs
+        },
+    }
+
+    # Debug: Print the request details
+    print("Headers:", headers)
+    print("Payload:", payload)
+
+    # Make the API request
+    response = requests.post(API_URL, headers=headers, json=payload)
+
+    # Debug: Print the response details
+    print("Response Status Code:", response.status_code)
+    print("Response Text:", response.text)
+
+    # Check for errors
+    if response.status_code != 200:
+        raise Exception(f"API request failed with status code {response.status_code}: {response.text}")
+
+    # Extract the generated text
+    response_text = response.json()[0]["generated_text"]
+
+    return response_text
