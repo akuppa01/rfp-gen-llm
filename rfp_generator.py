@@ -131,4 +131,11 @@ def generate_rfp(query):
     print("Response Status Code:", response.status_code)
     print("Response Text:", response.text)
 
-    # Check for 
+    # Check for errors
+    if response.status_code != 200:
+        raise Exception(f"API request failed with status code {response.status_code}: {response.text}")
+
+    # Extract the generated text
+    response_text = response.json()[0]["generated_text"]
+
+    return response_text
